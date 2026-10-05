@@ -1,0 +1,242 @@
+#include "udg/coloring.hpp"
+#include "udg/graph_io.hpp"
+#include "udg/unit_disk_graph.hpp"
+
+#include <algorithm>
+#include <limits>
+#include <set>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <unordered_set>
+#include <vector>
+
+namespace {
+
+void expect(bool condition, const std::string& message) {
+    if (!condition) {
+        throw std::runtime_error("test failed: " + message);
+    }
+}
+
+udg::Graph graph_from_edges(std::size_t n,
+                            const std::vector<std::pair<udg::Vertex, udg::Vertex>>& edges) {
+    udg::Graph graph(n);
+    for (const auto& [u, v] : edges) {
+        graph[u].push_back(v);
+        graph[v].push_back(u);
+    }
+    return graph;
+}
+
+std::set<std::pair<udg::Vertex, udg::Vertex>> edge_set(const udg::Graph& graph) {
+    std::set<std::pair<udg::Vertex, udg::Vertex>> edges;
+    for (std::size_t vertex = 0; vertex < graph.size(); ++vertex) {
+        for (const auto neighbor : graph[vertex]) {
+            if (vertex < neighbor) {
+                edges.emplace(static_cast<udg::Vertex>(vertex), neighbor);
+            }
+        }
+    }
+    return edges;
+}
+
+udg::Graph all_pairs_unit_disk_graph(const std::vector<udg::Point>& points,
+                                     double threshold) {
+    udg::Graph graph(points.size());
+    const double squared_threshold = threshold * threshold;
+    for (std::size_t u = 0; u < points.size(); ++u) {
+        for (std::size_t v = u + 1; v < points.size(); ++v) {
+            const double x_difference = points[u].x - points[v].x;
+            const double y_difference = points[u].y - points[v].y;
+            if (x_difference * x_difference + y_difference * y_difference <=
+                squared_threshold) {
+                graph[u].push_back(static_cast<udg::Vertex>(v));
+                graph[v].push_back(static_cast<udg::Vertex>(u));
+            }
+        }
+    }
+    return graph;
+}
+
+void test_empty_graph() {
+    const udg::Graph graph;
+    const auto result = udg::first_fit(graph, {});
+    expect(result.color_count == 0, "empty graph should use zero colors");
+    expect(udg::is_valid_coloring(graph, result), "empty coloring should be valid");
+}
+
+void test_clique() {
+    const auto triangle = graph_from_edges(3, {{0, 1}, {0, 2}, {1, 2}});
+    const auto result = udg::first_fit(triangle, {2, 0, 1});
+    expect(result.color_count == 3, "triangle should use three colors");
+    expect(udg::is_valid_coloring(triangle, result), "triangle coloring should be valid");
+}
+
+void test_order_sensitivity() {
+    const auto path = graph_from_edges(4, {{0, 1}, {1, 2}, {2, 3}});
+    const auto two_colors = udg::first_fit(path, {0, 1, 2, 3});
+    const auto three_colors = udg::first_fit(path, {0, 3, 1, 2});
+    expect(two_colors.color_count == 2, "natural path order should use two colors");
+    expect(three_colors.color_count == 3, "adversarial path order should use three colors");
+    expect(udg::is_valid_coloring(path, two_colors), "two-color path result should be valid");
+    expect(udg::is_valid_coloring(path, three_colors), "three-color path result should be valid");
+}
+
+void test_seed_reproducibility() {
+    const auto graph = graph_from_edges(5, {{0, 1}, {1, 2}, {2, 3}, {3, 4}, {4, 0}});
+    const auto first = udg::random_order_first_fit(graph, 12345);
+    const auto second = udg::random_order_first_fit(graph, 12345);
+    expect(first.colors == second.colors, "equal seeds should produce equal color assignments");
+    expect(first.color_count == second.color_count, "equal seeds should produce equal counts");
+}
+
+void test_dsatur_standard_graphs() {
+    const auto triangle = graph_from_edges(3, {{0, 1}, {0, 2}, {1, 2}});
+    const auto triangle_result = udg::dsatur(triangle);
+    expect(triangle_result.color_count == 3, "DSATUR should use three colors on a triangle");
+    expect(udg::is_valid_coloring(triangle, triangle_result),
+           "DSATUR triangle coloring should be valid");
+
+    const auto cycle = graph_from_edges(5, {{0, 1}, {1, 2}, {2, 3}, {3, 4}, {4, 0}});
+    const auto cycle_result = udg::dsatur(cycle);
+    expect(cycle_result.color_count == 3, "DSATUR should use three colors on an odd cycle");
+    expect(udg::is_valid_coloring(cycle, cycle_result),
+           "DSATUR odd-cycle coloring should be valid");
+
+    const auto complete_bipartite = graph_from_edges(
+        6, {{0, 3}, {0, 4}, {0, 5}, {1, 3}, {1, 4}, {1, 5}, {2, 3}, {2, 4}, {2, 5}});
+    const auto bipartite_result = udg::dsatur(complete_bipartite);
+    expect(bipartite_result.color_count == 2,
+           "DSATUR should use two colors on a complete bipartite graph");
+    expect(udg::is_valid_coloring(complete_bipartite, bipartite_result),
+           "DSATUR bipartite coloring should be valid");
+}
+
+udg::ColoringResult naive_dsatur(const udg::Graph& graph) {
+    const auto uncolored = std::numeric_limits<std::uint32_t>::max();
+    udg::ColoringResult result;
+    result.colors.assign(graph.size(), uncolored);
+
+    for (std::size_t step = 0; step < graph.size(); ++step) {
+        udg::Vertex best = 0;
+        std::size_t best_saturation = 0;
+        std::size_t best_degree = 0;
+        bool found = false;
+
+        for (std::size_t vertex = 0; vertex < graph.size(); ++vertex) {
+            if (result.colors[vertex] != uncolored) {
+                continue;
+            }
+            std::unordered_set<std::uint32_t> neighbor_colors;
+            std::size_t degree = 0;
+            for (const auto neighbor : graph[vertex]) {
+                if (result.colors[neighbor] == uncolored) {
+                    ++degree;
+                } else {
+                    neighbor_colors.insert(result.colors[neighbor]);
+                }
+            }
+            const bool is_better =
+                !found || neighbor_colors.size() > best_saturation ||
+                (neighbor_colors.size() == best_saturation && degree > best_degree) ||
+                (neighbor_colors.size() == best_saturation && degree == best_degree &&
+                 vertex < best);
+            if (is_better) {
+                best = static_cast<udg::Vertex>(vertex);
+                best_saturation = neighbor_colors.size();
+                best_degree = degree;
+                found = true;
+            }
+        }
+
+        std::vector<bool> used(graph.size(), false);
+        for (const auto neighbor : graph[best]) {
+            if (result.colors[neighbor] != uncolored) {
+                used[result.colors[neighbor]] = true;
+            }
+        }
+        std::uint32_t color = 0;
+        while (color < used.size() && used[color]) {
+            ++color;
+        }
+        result.colors[best] = color;
+        result.color_count = std::max(result.color_count, color + 1);
+    }
+    return result;
+}
+
+void test_random_unit_disk_graphs() {
+    for (std::size_t sample = 0; sample < 100; ++sample) {
+        const std::size_t n = 1 + sample % 40;
+        const double side = 2.0 + 0.5 * static_cast<double>(sample % 5);
+        const auto points = udg::generate_uniform_points(n, side, side, 6405 + sample);
+        const auto graph = udg::build_unit_disk_graph(points, 1.0);
+        const auto all_pairs_graph = all_pairs_unit_disk_graph(points, 1.0);
+        expect(edge_set(graph) == edge_set(all_pairs_graph),
+               "spatial-grid construction should match all-pairs UDG construction");
+
+        const auto expected = naive_dsatur(graph);
+        const auto actual = udg::dsatur(graph);
+        expect(actual.colors == expected.colors,
+               "indexed-heap DSATUR should match the naive deterministic reference");
+        expect(udg::is_valid_coloring(graph, actual),
+               "DSATUR unit-disk-graph coloring should be valid");
+    }
+}
+
+void test_unit_disk_threshold_boundary() {
+    const std::vector<udg::Point> points{{0.0, 0.0},
+                                         {1.0, 0.0},
+                                         {1.000000001, 0.0},
+                                         {0.0, 1.0}};
+    const auto graph = udg::build_unit_disk_graph(points, 1.0);
+    const std::set<std::pair<udg::Vertex, udg::Vertex>> expected{
+        {0, 1}, {0, 3}, {1, 2}};
+    expect(edge_set(graph) == expected,
+           "UDG construction should include threshold edges and exclude longer edges");
+}
+
+void test_uniform_point_reproducibility() {
+    const auto first = udg::generate_uniform_points(50, 10.0, 10.0, 6405);
+    const auto second = udg::generate_uniform_points(50, 10.0, 10.0, 6405);
+    expect(first.size() == second.size(), "equal seeds should produce equal point counts");
+    for (std::size_t i = 0; i < first.size(); ++i) {
+        expect(first[i].x == second[i].x && first[i].y == second[i].y,
+               "equal seeds should reproduce the same points");
+    }
+}
+
+void test_edge_list_reader() {
+    std::istringstream input("# path with a duplicate edge\n4 4\n0 1\n1 2\n2 3\n1 0\n");
+    const auto graph = udg::read_edge_list(input);
+    expect(graph.size() == 4, "reader should preserve vertex count");
+    expect(graph[0].size() == 1, "reader should remove duplicate undirected edges");
+    expect(graph[1].size() == 2, "reader should build both adjacency directions");
+}
+
+void test_invalid_order() {
+    const udg::Graph graph(2);
+    bool threw = false;
+    try {
+        static_cast<void>(udg::first_fit(graph, {0, 0}));
+    } catch (const std::invalid_argument&) {
+        threw = true;
+    }
+    expect(threw, "duplicate vertex in an order should be rejected");
+}
+
+}
+
+int main() {
+    test_empty_graph();
+    test_clique();
+    test_order_sensitivity();
+    test_seed_reproducibility();
+    test_dsatur_standard_graphs();
+    test_random_unit_disk_graphs();
+    test_unit_disk_threshold_boundary();
+    test_uniform_point_reproducibility();
+    test_edge_list_reader();
+    test_invalid_order();
+}
