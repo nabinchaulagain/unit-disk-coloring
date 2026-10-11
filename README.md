@@ -1,6 +1,6 @@
 # Unit disk graph coloring
 
-This project builds unit disk graphs from the Mylnikov Wi-Fi location dataset and compares 3 greedy coloring orders.
+A C++ project that builds unit disk graphs from the Mylnikov Wi-Fi location dataset and compares 3 greedy coloring orders.
 
 ## Build and test
 
@@ -20,7 +20,7 @@ ctest --test-dir build --output-on-failure
 
 Download the [Mylnikov 2019 Wi-Fi dump](https://www.mylnikov.org/dump2019/wifi.csv) or use the local sample in `datasets/mylnikov/wifi_sample_1MiB.csv`.
 
-The command below selects records in the half-open area `48 <= latitude < 49` and `2 <= longitude < 3`. It maps the coordinates to a local plane measured in meters, then connects every pair at most 100 meters apart. The threshold is an experiment parameter.
+The command below selects records from the half-open area `48 <= latitude < 49` and `2 <= longitude < 3`. The importer maps the coordinates to a local plane in meters and connects every pair at most 100 meters apart. We choose the threshold for each experiment.
 
 ```bash
 ./build/import_mylnikov \
@@ -35,13 +35,13 @@ The command below selects records in the half-open area `48 <= latitude < 49` an
   --metrics generation.csv
 ```
 
-Each dataset row becomes one vertex. This keeps co-located access points separate. The generated files use sequential vertex IDs and do not contain BSSIDs.
+The importer creates one vertex for each dataset row and keeps co-located access points separate. The output uses sequential vertex IDs and does not contain BSSIDs.
 
-The importer uses an equirectangular projection centered on the selected area. A spatial grid restricts distance checks to the current cell and its eight neighboring cells. The graph is simple and undirected, and points exactly at the threshold are adjacent. Dividing every projected coordinate by the fixed threshold gives the equivalent unit-distance representation.
+The importer uses an equirectangular projection centered on the selected area. A spatial grid limits each distance check to the current cell and its 8 neighboring cells. We create a simple undirected graph and connect points whose distance is at most the threshold. Dividing each projected coordinate by the fixed threshold gives the same graph with a unit distance limit.
 
 ## Run the coloring algorithms
 
-Geometric first-fit processes vertices from left to right. Equal x-coordinates are ordered by y-coordinate and then vertex ID.
+Geometric first-fit processes vertices from left to right. For equal x-coordinates, it uses the y-coordinate and then the vertex ID.
 
 ```bash
 ./build/color_graph \
@@ -51,7 +51,7 @@ Geometric first-fit processes vertices from left to right. Equal x-coordinates a
   --output geometric.csv
 ```
 
-Smallest-last repeatedly removes a vertex with minimum current degree. It reverses the removal order before applying first-fit.
+Smallest-last removes a vertex with minimum current degree until no vertices remain. It then applies first-fit in reverse removal order.
 
 ```bash
 ./build/color_graph \
@@ -60,7 +60,7 @@ Smallest-last repeatedly removes a vertex with minimum current degree. It revers
   --output smallest-last.csv
 ```
 
-Random-order first-fit shuffles the vertices with a recorded seed before coloring them.
+Random-order first-fit shuffles the vertices using a recorded seed and then colors them.
 
 ```bash
 ./build/color_graph \
@@ -70,9 +70,9 @@ Random-order first-fit shuffles the vertices with a recorded seed before colorin
   --output random.csv
 ```
 
-Each method assigns the smallest color not used by an already colored neighbor. Geometric first-fit takes `O(n log n + m)` time after graph construction. Smallest-last uses degree buckets and takes `O(n + m)` time. Random-order first-fit also takes `O(n + m)` time. All 3 use `O(n + m)` total space with the graph.
+Each method assigns the smallest color that none of the colored neighbors use. After we build the graph, geometric first-fit takes `O(n log n + m)` time. Smallest-last uses degree buckets and takes `O(n + m)` time. Random-order first-fit also takes `O(n + m)` time. Each method uses `O(n + m)` total space including the graph.
 
-The comparison command also supports DSATUR:
+The command also supports DSATUR:
 
 ```bash
 ./build/color_graph \
@@ -81,9 +81,9 @@ The comparison command also supports DSATUR:
   --output dsatur.csv
 ```
 
-DSATUR selects the uncolored vertex with the highest saturation degree. It breaks ties by remaining degree and then vertex ID. Its expected running time is `O((n + m) log n)` with the indexed max-heap implementation.
+DSATUR selects the uncolored vertex with the highest saturation degree. It breaks ties using the remaining degree and then the vertex ID. The indexed max-heap implementation has an expected running time of `O((n + m) log n)`.
 
-Each measurement CSV contains the algorithm, graph size, color count, coloring time, validity result and random seed when used. Graph construction and file parsing occur outside the coloring timer.
+Each measurement CSV contains the algorithm, graph size, color count, coloring time, validity result and random seed when used. The coloring timer excludes graph construction and file parsing.
 
 The synthetic generator remains available for small reference tests:
 
