@@ -1,8 +1,10 @@
 #include "udg/coloring.hpp"
 #include "udg/graph_io.hpp"
+#include "udg/mylnikov.hpp"
 #include "udg/unit_disk_graph.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <set>
 #include <sstream>
@@ -207,6 +209,49 @@ void test_uniform_point_reproducibility() {
     }
 }
 
+void test_mylnikov_selection_and_projection() {
+    std::istringstream input(
+        "id,bssid,lat,lon,updated,data\n"
+        "1,AA,48.500000,2.500000,0,0\n"
+        "2,BB,48.500000,2.501000,0,0\n"
+        "3,CC,49.000000,2.500000,0,0\n"
+        "4,DD,invalid,2.500000,0,0\n");
+    const udg::GeographicBounds bounds{48.0, 49.0, 2.0, 3.0};
+    const auto selection = udg::read_mylnikov_csv(input, bounds);
+    expect(selection.rows_read == 4, "Mylnikov reader should count data rows");
+    expect(selection.invalid_rows == 1, "Mylnikov reader should count invalid coordinates");
+    expect(selection.coordinates.size() == 2,
+           "Mylnikov reader should use half-open geographic bounds");
+
+    const auto points = udg::project_equirectangular(selection.coordinates, 48.5, 2.5);
+    expect(points.size() == 2, "projection should preserve the selected point count");
+    expect(std::abs(points[0].x) < 1e-9 && std::abs(points[0].y) < 1e-9,
+           "projection reference point should map to the origin");
+    expect(points[1].x > 73.0 && points[1].x < 75.0,
+           "one millidegree of longitude near Paris should project to about 74 meters");
+
+    const auto graph = udg::build_unit_disk_graph(points, 100.0);
+    expect(edge_set(graph) ==
+               std::set<std::pair<udg::Vertex, udg::Vertex>>{{0, 1}},
+           "projected access points within 100 meters should be adjacent");
+}
+
+void test_mylnikov_duplicate_coordinates_remain_distinct() {
+    std::istringstream input(
+        "id,bssid,lat,lon,updated,data\n"
+        "1,AA,48.1,2.1,0,0\n"
+        "2,BB,48.1,2.1,0,0\n");
+    const udg::GeographicBounds bounds{48.0, 49.0, 2.0, 3.0};
+    const auto selection = udg::read_mylnikov_csv(input, bounds);
+    expect(selection.coordinates.size() == 2,
+           "separate access-point records should remain separate vertices");
+    const auto points = udg::project_equirectangular(selection.coordinates, 48.5, 2.5);
+    const auto graph = udg::build_unit_disk_graph(points, 1.0);
+    expect(edge_set(graph) ==
+               std::set<std::pair<udg::Vertex, udg::Vertex>>{{0, 1}},
+           "co-located access points should be adjacent");
+}
+
 void test_edge_list_reader() {
     std::istringstream input("# path with a duplicate edge\n4 4\n0 1\n1 2\n2 3\n1 0\n");
     const auto graph = udg::read_edge_list(input);
@@ -237,6 +282,8 @@ int main() {
     test_random_unit_disk_graphs();
     test_unit_disk_threshold_boundary();
     test_uniform_point_reproducibility();
+    test_mylnikov_selection_and_projection();
+    test_mylnikov_duplicate_coordinates_remain_distinct();
     test_edge_list_reader();
     test_invalid_order();
 }

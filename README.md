@@ -1,54 +1,45 @@
-# DSATUR coloring
+# Unit disk graph coloring
 
-This directory implements Nabin Chaulagain's part of the COT 6405 unit-disk
-coloring project: the DSATUR heuristic and efficient data structures for its
-dynamically changing priorities.
-
-The coloring code operates on an adjacency list, so it can be connected to the
-team's shared spatial-grid graph generator without changing the algorithm. The
-command-line program currently reads a simple undirected edge list:
-
-```text
-n m
-u_1 v_1
-...
-u_m v_m
-```
-
-Vertex IDs are zero-based. Blank lines and lines beginning with `#` are
-ignored. Self-loops and out-of-range endpoints are rejected, while duplicate
-undirected edges are removed.
+This project builds unit disk graphs from the Mylnikov Wi-Fi location dataset and colors them with DSATUR.
 
 ## Build and test
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+```
+
+```bash
 cmake --build build -j
+```
+
+```bash
 ctest --test-dir build --output-on-failure
 ```
 
-## Run DSATUR
+## Build a graph from the dataset
 
-Generate a uniform unit disk graph first. The command samples points from a
-square and joins each pair whose Euclidean distance is at most the threshold.
-The default threshold is 1, matching the submitted proposal.
+Download the [Mylnikov 2019 Wi-Fi dump](https://www.mylnikov.org/dump2019/wifi.csv) or use the local sample in `datasets/mylnikov/wifi_sample_1MiB.csv`.
+
+The command below selects records in the half-open area `48 <= latitude < 49` and `2 <= longitude < 3`. It maps the coordinates to a local plane measured in meters, then connects every pair at most 100 meters apart. The threshold is an experiment parameter.
 
 ```bash
-./build/generate_udg \
-  --vertices 10000 \
-  --side 100 \
-  --threshold 1 \
-  --seed 6405 \
+./build/import_mylnikov \
+  --input ../../../datasets/mylnikov/wifi_sample_1MiB.csv \
+  --min-lat 48 \
+  --max-lat 49 \
+  --min-lon 2 \
+  --max-lon 3 \
+  --threshold-meters 100 \
   --output graph.edgelist \
   --points points.csv \
   --metrics generation.csv
 ```
 
-The generator uses a spatial grid with cells equal to the distance threshold.
-It checks candidates from the point's cell and eight neighboring cells. Small
-test instances are compared with an all-pairs implementation.
+Each dataset row becomes one vertex. This keeps co-located access points separate. The generated files use sequential vertex IDs and do not contain BSSIDs.
 
-Color the generated graph:
+The importer uses an equirectangular projection centered on the selected area. A spatial grid restricts distance checks to the current cell and its eight neighboring cells. The graph is simple and undirected, and points exactly at the threshold are adjacent. Dividing every projected coordinate by the fixed threshold gives the equivalent unit-distance representation.
+
+## Run DSATUR
 
 ```bash
 ./build/dsatur \
@@ -57,41 +48,16 @@ Color the generated graph:
   --colors assignments.csv
 ```
 
-The measurement CSV records the graph size, number of colors, coloring time,
-and validity check. The optional assignments CSV records each zero-based vertex
-ID and its one-based color. Graph construction and input parsing occur before
-the timed region, which allows fair comparison against the other coloring
-methods.
+DSATUR selects the uncolored vertex with the highest saturation degree, which is the number of distinct colors used by its colored neighbors. It breaks ties by remaining degree and then vertex ID. The selected vertex gets the smallest available color.
 
-For peak resident memory on Linux, wrap the command with `/usr/bin/time -v` and
-record `Maximum resident set size` along with compiler, optimization flags,
-CPU, and RAM.
+The implementation uses an indexed max-heap for changing priorities, residual-degree and saturation arrays, a set of observed neighbor colors and timestamp marks for available colors. For `n` vertices and `m` edges, the expected running time is `O((n + m) log n)` and the working space is `O(n + m)` in the worst case. DSATUR returns a valid coloring but does not guarantee the minimum number of colors.
 
-## Algorithm and data structures
+The measurement CSV contains the graph size, color count, coloring time and validity result. Graph construction and file parsing occur outside the coloring timer.
 
-DSATUR repeatedly selects an uncolored vertex with the largest *saturation
-degree*: the number of distinct colors already present among its neighbors.
-Ties are broken by the vertex's degree in the remaining uncolored graph, then
-by vertex ID so runs are deterministic. The selected vertex receives the
-smallest color not used by a colored neighbor.
+The synthetic generator remains available for small reference tests:
 
-The implementation uses:
+```bash
+./build/generate_udg --vertices 100 --side 10 --threshold 1 --output test.edgelist
+```
 
-- an indexed max-heap with one entry per uncolored vertex, allowing an updated
-  priority to move in `O(log n)` time without stale duplicate heap entries;
-- residual degree and saturation arrays using `O(n)` space;
-- a hash set of `(vertex, neighbor-color)` pairs, so a saturation value rises
-  only when a genuinely new neighboring color appears; and
-- timestamp marks to find the smallest available color without clearing an
-  `O(n)` array for every vertex.
-
-For `n` vertices and `m` edges, initialization takes `O(n + m)` time. At most
-one heap update is performed for each endpoint when an edge becomes incident
-to a newly colored vertex, giving `O((n + m) log n)` expected time overall.
-The working storage is `O(n + m)` in the worst case, in addition to the shared
-adjacency lists. The hash-table operations have expected constant cost.
-
-The result is proper because a selected vertex is assigned a color absent from
-all already colored neighbors. When the other endpoint of any edge is colored
-later, it makes the same check, so the endpoints differ at termination. DSATUR
-is a heuristic: validity is guaranteed, but a minimum-color result is not.
+See [DATASET.md](DATASET.md) for the source, selection and modeling assumptions.

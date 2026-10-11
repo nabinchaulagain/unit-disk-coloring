@@ -2,3 +2,5 @@
 /build-*/
 /*.csv
 /*.edgelist
+/data/
+/datasets/
