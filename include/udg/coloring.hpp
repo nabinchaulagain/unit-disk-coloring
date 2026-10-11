@@ -6,6 +6,8 @@
 
 namespace udg {
 
+struct Point;
+
 using Vertex = std::uint32_t;
 using Graph = std::vector<std::vector<Vertex>>;
 
@@ -17,6 +19,10 @@ struct ColoringResult {
 ColoringResult first_fit(const Graph& graph, const std::vector<Vertex>& order);
 
 ColoringResult random_order_first_fit(const Graph& graph, std::uint64_t seed);
+
+ColoringResult geometric_first_fit(const Graph& graph, const std::vector<Point>& points);
+
+ColoringResult smallest_last(const Graph& graph);
 
 ColoringResult dsatur(const Graph& graph);
 

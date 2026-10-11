@@ -27,6 +27,6 @@ The local projection works for a bounded area. It should not be used once for th
 
 ## Verified sample run
 
-We selected `48 <= latitude < 49` and `2 <= longitude < 3` from the local sample and used a 100-meter threshold. This produced 3,876 vertices and 14,120 edges. DSATUR used 41 colors and returned a valid coloring. The 100-meter value is a chosen experiment setting, not a distance supplied by the dataset.
+We selected `48 <= latitude < 49` and `2 <= longitude < 3` from the local sample and used a 100-meter threshold. This produced 3,876 vertices and 14,120 edges. Geometric first-fit and smallest-last used 41 colors. Random-order first-fit used 42 colors with seed 6405. All 3 colorings passed the validity check. The 100-meter value is a chosen experiment setting, not a distance supplied by the dataset.
 
 The selected records contain 2,641 unique coordinate pairs. The graph keeps all 3,876 access-point records as vertices.

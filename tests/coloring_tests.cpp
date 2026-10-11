@@ -1,6 +1,7 @@
 #include "udg/coloring.hpp"
 #include "udg/graph_io.hpp"
 #include "udg/mylnikov.hpp"
+#include "udg/point_io.hpp"
 #include "udg/unit_disk_graph.hpp"
 
 #include <algorithm>
@@ -43,16 +44,14 @@ std::set<std::pair<udg::Vertex, udg::Vertex>> edge_set(const udg::Graph& graph) 
     return edges;
 }
 
-udg::Graph all_pairs_unit_disk_graph(const std::vector<udg::Point>& points,
-                                     double threshold) {
+udg::Graph all_pairs_unit_disk_graph(const std::vector<udg::Point>& points, double threshold) {
     udg::Graph graph(points.size());
     const double squared_threshold = threshold * threshold;
     for (std::size_t u = 0; u < points.size(); ++u) {
         for (std::size_t v = u + 1; v < points.size(); ++v) {
             const double x_difference = points[u].x - points[v].x;
             const double y_difference = points[u].y - points[v].y;
-            if (x_difference * x_difference + y_difference * y_difference <=
-                squared_threshold) {
+            if (x_difference * x_difference + y_difference * y_difference <= squared_threshold) {
                 graph[u].push_back(static_cast<udg::Vertex>(v));
                 graph[v].push_back(static_cast<udg::Vertex>(u));
             }
@@ -113,6 +112,40 @@ void test_dsatur_standard_graphs() {
            "DSATUR should use two colors on a complete bipartite graph");
     expect(udg::is_valid_coloring(complete_bipartite, bipartite_result),
            "DSATUR bipartite coloring should be valid");
+}
+
+void test_geometric_first_fit() {
+    const std::vector<udg::Point> points{{0.0, 0.0}, {0.6, 0.7}, {1.2, 0.0}, {0.7, -0.8}};
+    const auto graph = udg::build_unit_disk_graph(points, 1.0);
+    const auto result = udg::geometric_first_fit(graph, points);
+    expect(result.color_count == 3, "geometric first-fit should follow x, y and vertex-ID order");
+    expect(udg::is_valid_coloring(graph, result), "geometric first-fit coloring should be valid");
+
+    const std::vector<udg::Point> tied_points{{0.0, 2.0}, {0.0, 0.0}, {0.0, 1.0}};
+    const auto tied_graph = udg::build_unit_disk_graph(tied_points, 1.0);
+    const auto tied_result = udg::geometric_first_fit(tied_graph, tied_points);
+    expect(tied_result.color_count == 2,
+           "geometric first-fit should break equal-x ties by y coordinate");
+    expect(udg::is_valid_coloring(tied_graph, tied_result),
+           "geometric first-fit tied-coordinate coloring should be valid");
+}
+
+void test_smallest_last() {
+    const auto path = graph_from_edges(6, {{0, 1}, {1, 2}, {2, 3}, {3, 4}, {4, 5}});
+    const auto path_result = udg::smallest_last(path);
+    expect(path_result.color_count == 2, "smallest-last should use two colors on a path");
+    expect(udg::is_valid_coloring(path, path_result),
+           "smallest-last path coloring should be valid");
+
+    const auto cycle = graph_from_edges(5, {{0, 1}, {1, 2}, {2, 3}, {3, 4}, {4, 0}});
+    const auto cycle_result = udg::smallest_last(cycle);
+    expect(cycle_result.color_count == 3, "smallest-last should use three colors on an odd cycle");
+    expect(udg::is_valid_coloring(cycle, cycle_result),
+           "smallest-last odd-cycle coloring should be valid");
+
+    const auto triangle = graph_from_edges(3, {{0, 1}, {0, 2}, {1, 2}});
+    const auto triangle_result = udg::smallest_last(triangle);
+    expect(triangle_result.color_count == 3, "smallest-last should use three colors on a triangle");
 }
 
 udg::ColoringResult naive_dsatur(const udg::Graph& graph) {
@@ -184,19 +217,24 @@ void test_random_unit_disk_graphs() {
                "indexed-heap DSATUR should match the naive deterministic reference");
         expect(udg::is_valid_coloring(graph, actual),
                "DSATUR unit-disk-graph coloring should be valid");
+
+        const auto geometric = udg::geometric_first_fit(graph, points);
+        expect(udg::is_valid_coloring(graph, geometric),
+               "geometric first-fit unit-disk-graph coloring should be valid");
+
+        const auto smallest_last = udg::smallest_last(graph);
+        expect(udg::is_valid_coloring(graph, smallest_last),
+               "smallest-last unit-disk-graph coloring should be valid");
     }
 }
 
 void test_unit_disk_threshold_boundary() {
-    const std::vector<udg::Point> points{{0.0, 0.0},
-                                         {1.0, 0.0},
-                                         {1.000000001, 0.0},
-                                         {0.0, 1.0}};
+    const std::vector<udg::Point> points{{0.0, 0.0}, {1.0, 0.0}, {1.000000001, 0.0}, {0.0, 1.0}};
     const auto graph = udg::build_unit_disk_graph(points, 1.0);
-    const std::set<std::pair<udg::Vertex, udg::Vertex>> expected{
-        {0, 1}, {0, 3}, {1, 2}};
+    const std::set<std::pair<udg::Vertex, udg::Vertex>> expected{{0, 1}, {0, 3}, {1, 2}};
     expect(edge_set(graph) == expected,
-           "UDG construction should include threshold edges and exclude longer edges");
+           "UDG construction should include threshold edges and exclude longer "
+           "edges");
 }
 
 void test_uniform_point_reproducibility() {
@@ -210,12 +248,11 @@ void test_uniform_point_reproducibility() {
 }
 
 void test_mylnikov_selection_and_projection() {
-    std::istringstream input(
-        "id,bssid,lat,lon,updated,data\n"
-        "1,AA,48.500000,2.500000,0,0\n"
-        "2,BB,48.500000,2.501000,0,0\n"
-        "3,CC,49.000000,2.500000,0,0\n"
-        "4,DD,invalid,2.500000,0,0\n");
+    std::istringstream input("id,bssid,lat,lon,updated,data\n"
+                             "1,AA,48.500000,2.500000,0,0\n"
+                             "2,BB,48.500000,2.501000,0,0\n"
+                             "3,CC,49.000000,2.500000,0,0\n"
+                             "4,DD,invalid,2.500000,0,0\n");
     const udg::GeographicBounds bounds{48.0, 49.0, 2.0, 3.0};
     const auto selection = udg::read_mylnikov_csv(input, bounds);
     expect(selection.rows_read == 4, "Mylnikov reader should count data rows");
@@ -228,28 +265,38 @@ void test_mylnikov_selection_and_projection() {
     expect(std::abs(points[0].x) < 1e-9 && std::abs(points[0].y) < 1e-9,
            "projection reference point should map to the origin");
     expect(points[1].x > 73.0 && points[1].x < 75.0,
-           "one millidegree of longitude near Paris should project to about 74 meters");
+           "one millidegree of longitude near Paris should project to about 74 "
+           "meters");
 
     const auto graph = udg::build_unit_disk_graph(points, 100.0);
-    expect(edge_set(graph) ==
-               std::set<std::pair<udg::Vertex, udg::Vertex>>{{0, 1}},
+    expect(edge_set(graph) == std::set<std::pair<udg::Vertex, udg::Vertex>>{{0, 1}},
            "projected access points within 100 meters should be adjacent");
 }
 
 void test_mylnikov_duplicate_coordinates_remain_distinct() {
-    std::istringstream input(
-        "id,bssid,lat,lon,updated,data\n"
-        "1,AA,48.1,2.1,0,0\n"
-        "2,BB,48.1,2.1,0,0\n");
+    std::istringstream input("id,bssid,lat,lon,updated,data\n"
+                             "1,AA,48.1,2.1,0,0\n"
+                             "2,BB,48.1,2.1,0,0\n");
     const udg::GeographicBounds bounds{48.0, 49.0, 2.0, 3.0};
     const auto selection = udg::read_mylnikov_csv(input, bounds);
     expect(selection.coordinates.size() == 2,
            "separate access-point records should remain separate vertices");
     const auto points = udg::project_equirectangular(selection.coordinates, 48.5, 2.5);
     const auto graph = udg::build_unit_disk_graph(points, 1.0);
-    expect(edge_set(graph) ==
-               std::set<std::pair<udg::Vertex, udg::Vertex>>{{0, 1}},
+    expect(edge_set(graph) == std::set<std::pair<udg::Vertex, udg::Vertex>>{{0, 1}},
            "co-located access points should be adjacent");
+}
+
+void test_point_csv_reader() {
+    std::istringstream input("vertex,latitude,longitude,x_meters,y_meters\n"
+                             "1,48.5,2.501,74.0,0.0\n"
+                             "0,48.5,2.5,0.0,0.0\n");
+    const auto points = udg::read_points_csv(input, 2);
+    expect(points.size() == 2, "point CSV reader should preserve vertex count");
+    expect(points[0].x == 0.0 && points[0].y == 0.0,
+           "point CSV reader should place rows by vertex ID");
+    expect(points[1].x == 74.0 && points[1].y == 0.0,
+           "point CSV reader should accept projected meter columns");
 }
 
 void test_edge_list_reader() {
@@ -279,11 +326,14 @@ int main() {
     test_order_sensitivity();
     test_seed_reproducibility();
     test_dsatur_standard_graphs();
+    test_geometric_first_fit();
+    test_smallest_last();
     test_random_unit_disk_graphs();
     test_unit_disk_threshold_boundary();
     test_uniform_point_reproducibility();
     test_mylnikov_selection_and_projection();
     test_mylnikov_duplicate_coordinates_remain_distinct();
+    test_point_csv_reader();
     test_edge_list_reader();
     test_invalid_order();
 }

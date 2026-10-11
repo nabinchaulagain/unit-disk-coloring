@@ -63,7 +63,7 @@ void validate_bounds(const GeographicBounds &bounds) {
   }
 }
 
-} // namespace
+}
 
 MylnikovSelection read_mylnikov_csv(std::istream &input,
                                     const GeographicBounds &bounds) {
@@ -163,4 +163,4 @@ project_equirectangular(const std::vector<GeographicPoint> &coordinates,
   return points;
 }
 
-} // namespace udg
+}

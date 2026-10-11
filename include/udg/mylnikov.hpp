@@ -33,4 +33,4 @@ std::vector<Point>
 project_equirectangular(const std::vector<GeographicPoint> &coordinates,
                         double reference_latitude, double reference_longitude);
 
-} // namespace udg
+}

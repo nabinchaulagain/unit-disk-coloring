@@ -1,6 +1,8 @@
 #include "udg/coloring.hpp"
+#include "udg/unit_disk_graph.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <numeric>
 #include <random>
@@ -29,9 +31,7 @@ class IndexedMaxHeap {
 public:
     IndexedMaxHeap(const std::vector<std::uint32_t>& saturation,
                    const std::vector<std::size_t>& uncolored_degree)
-        : saturation_(saturation),
-          uncolored_degree_(uncolored_degree),
-          heap_(saturation.size()),
+        : saturation_(saturation), uncolored_degree_(uncolored_degree), heap_(saturation.size()),
           position_(saturation.size()) {
         std::iota(heap_.begin(), heap_.end(), Vertex{0});
         std::iota(position_.begin(), position_.end(), std::size_t{0});
@@ -168,6 +168,118 @@ ColoringResult random_order_first_fit(const Graph& graph, std::uint64_t seed) {
     return first_fit(graph, order);
 }
 
+ColoringResult geometric_first_fit(const Graph& graph, const std::vector<Point>& points) {
+    if (points.size() != graph.size()) {
+        throw std::invalid_argument("geometric first-fit requires one point per vertex");
+    }
+
+    std::vector<Vertex> order(graph.size());
+    std::iota(order.begin(), order.end(), Vertex{0});
+    for (const auto& point : points) {
+        if (!std::isfinite(point.x) || !std::isfinite(point.y)) {
+            throw std::invalid_argument("geometric first-fit requires finite coordinates");
+        }
+    }
+    std::sort(order.begin(), order.end(), [&](Vertex left, Vertex right) {
+        if (points[left].x != points[right].x) {
+            return points[left].x < points[right].x;
+        }
+        if (points[left].y != points[right].y) {
+            return points[left].y < points[right].y;
+        }
+        return left < right;
+    });
+    return first_fit(graph, order);
+}
+
+ColoringResult smallest_last(const Graph& graph) {
+    const std::size_t n = graph.size();
+    if (n > std::numeric_limits<Vertex>::max()) {
+        throw std::invalid_argument("graph exceeds the 32-bit vertex-ID limit");
+    }
+    if (n == 0) {
+        return first_fit(graph, {});
+    }
+
+    const Vertex absent = std::numeric_limits<Vertex>::max();
+    std::vector<std::size_t> degree(n);
+    std::vector<Vertex> bucket_head(n, absent);
+    std::vector<Vertex> previous(n, absent);
+    std::vector<Vertex> next(n, absent);
+    std::vector<bool> active(n, true);
+
+    auto insert = [&](Vertex vertex, std::size_t bucket) {
+        previous[vertex] = absent;
+        next[vertex] = bucket_head[bucket];
+        if (bucket_head[bucket] != absent) {
+            previous[bucket_head[bucket]] = vertex;
+        }
+        bucket_head[bucket] = vertex;
+    };
+
+    auto remove = [&](Vertex vertex, std::size_t bucket) {
+        if (previous[vertex] == absent) {
+            bucket_head[bucket] = next[vertex];
+        } else {
+            next[previous[vertex]] = next[vertex];
+        }
+        if (next[vertex] != absent) {
+            previous[next[vertex]] = previous[vertex];
+        }
+        previous[vertex] = absent;
+        next[vertex] = absent;
+    };
+
+    for (std::size_t vertex = n; vertex > 0; --vertex) {
+        const std::size_t index = vertex - 1;
+        if (graph[index].size() >= n) {
+            throw std::invalid_argument("smallest-last requires a simple graph");
+        }
+        for (const Vertex neighbor : graph[index]) {
+            if (neighbor >= n || neighbor == index) {
+                throw std::invalid_argument(
+                    "smallest-last requires a loop-free graph with valid endpoints");
+            }
+        }
+        degree[index] = graph[index].size();
+        insert(static_cast<Vertex>(index), degree[index]);
+    }
+
+    std::vector<Vertex> removal_order;
+    removal_order.reserve(n);
+    std::size_t minimum_degree = 0;
+
+    for (std::size_t step = 0; step < n; ++step) {
+        while (minimum_degree < n && bucket_head[minimum_degree] == absent) {
+            ++minimum_degree;
+        }
+        if (minimum_degree == n) {
+            throw std::invalid_argument("smallest-last requires a symmetric simple graph");
+        }
+
+        const Vertex vertex = bucket_head[minimum_degree];
+        remove(vertex, degree[vertex]);
+        active[vertex] = false;
+        removal_order.push_back(vertex);
+
+        for (const Vertex neighbor : graph[vertex]) {
+            if (!active[neighbor]) {
+                continue;
+            }
+            if (degree[neighbor] == 0) {
+                throw std::invalid_argument("smallest-last requires a symmetric simple graph");
+            }
+            remove(neighbor, degree[neighbor]);
+            --degree[neighbor];
+            insert(neighbor, degree[neighbor]);
+            minimum_degree = std::min(minimum_degree, degree[neighbor]);
+        }
+    }
+
+    std::reverse(removal_order.begin(), removal_order.end());
+    return first_fit(graph, removal_order);
+}
+
 ColoringResult dsatur(const Graph& graph) {
     const std::size_t n = graph.size();
     if (n > std::numeric_limits<Vertex>::max()) {
@@ -187,7 +299,8 @@ ColoringResult dsatur(const Graph& graph) {
         uncolored_degree[vertex] = graph[vertex].size();
         for (const Vertex neighbor : graph[vertex]) {
             if (neighbor >= n || neighbor == vertex) {
-                throw std::invalid_argument("DSATUR requires a loop-free graph with valid endpoints");
+                throw std::invalid_argument(
+                    "DSATUR requires a loop-free graph with valid endpoints");
             }
         }
     }
@@ -228,8 +341,7 @@ ColoringResult dsatur(const Graph& graph) {
             }
             --uncolored_degree[neighbor];
 
-            const std::uint64_t key =
-                (static_cast<std::uint64_t>(neighbor) << 32U) | color;
+            const std::uint64_t key = (static_cast<std::uint64_t>(neighbor) << 32U) | color;
             const bool is_new_color = seen_neighbor_colors.insert(key).second;
             if (is_new_color) {
                 ++saturation[neighbor];
@@ -259,8 +371,7 @@ bool is_valid_coloring(const Graph& graph, const ColoringResult& coloring) {
             return false;
         }
         for (const Vertex neighbor : graph[vertex]) {
-            if (neighbor >= graph.size() ||
-                coloring.colors[vertex] == coloring.colors[neighbor]) {
+            if (neighbor >= graph.size() || coloring.colors[vertex] == coloring.colors[neighbor]) {
                 return false;
             }
         }

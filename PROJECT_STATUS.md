@@ -10,19 +10,23 @@
 ## Algorithms
 
 - A spatial grid generates the unit disk graph without comparing every pair of points.
-- DSATUR selects the vertex with the most distinct neighbor colors, breaks ties by degree and assigns the smallest available color.
-- DSATUR guarantees a valid coloring, but it may use more than the minimum number of colors.
+- Geometric first-fit orders vertices from left to right.
+- Smallest-last removes minimum-degree vertices and colors them in reverse removal order.
+- Random-order first-fit shuffles vertices with a recorded seed.
+- DSATUR is available as an additional comparison.
+- Each coloring method assigns the smallest color unused by an already colored neighbor.
 
 ## Progress
 
 - The real-data importer, geographic projection and graph generator work.
-- The DSATUR implementation and validity check work.
+- All 3 proposed coloring algorithms and the validity check work.
 - Unit tests compare the grid generator with an all-pairs implementation on small graphs.
-- A sample region produced 3,876 vertices and 14,120 edges at a 100-meter threshold. DSATUR used 41 colors and returned a valid coloring.
+- A sample region produced 3,876 vertices and 14,120 edges at a 100-meter threshold.
+- Geometric first-fit and smallest-last used 41 colors. Random-order first-fit used 42 colors with seed 6405.
+- DSATUR also used 41 colors. Every result passed the validity check.
 
 ## Remaining
 
 - Agree on the geographic regions and distance thresholds for the experiments.
-- Add the other coloring algorithms used by the group.
 - Run the full experiment matrix and record colors, time and memory.
 - Create comparison plots and finish the report and presentation.

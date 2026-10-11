@@ -9,6 +9,7 @@ add_library(udg_coloring
     src/coloring.cpp
     src/graph_io.cpp
     src/mylnikov.cpp
+    src/point_io.cpp
     src/unit_disk_graph.cpp
 )
 target_include_directories(udg_coloring PUBLIC include)
@@ -17,6 +18,10 @@ target_compile_options(udg_coloring PRIVATE -Wall -Wextra -Wpedantic)
 add_executable(dsatur src/main.cpp)
 target_link_libraries(dsatur PRIVATE udg_coloring)
 target_compile_options(dsatur PRIVATE -Wall -Wextra -Wpedantic)
+
+add_executable(color_graph src/color_graph.cpp)
+target_link_libraries(color_graph PRIVATE udg_coloring)
+target_compile_options(color_graph PRIVATE -Wall -Wextra -Wpedantic)
 
 add_executable(generate_udg src/generate_udg.cpp)
 target_link_libraries(generate_udg PRIVATE udg_coloring)

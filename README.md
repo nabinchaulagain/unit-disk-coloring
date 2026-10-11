@@ -1,6 +1,6 @@
 # Unit disk graph coloring
 
-This project builds unit disk graphs from the Mylnikov Wi-Fi location dataset and colors them with DSATUR.
+This project builds unit disk graphs from the Mylnikov Wi-Fi location dataset and compares 3 greedy coloring orders.
 
 ## Build and test
 
@@ -39,20 +39,51 @@ Each dataset row becomes one vertex. This keeps co-located access points separat
 
 The importer uses an equirectangular projection centered on the selected area. A spatial grid restricts distance checks to the current cell and its eight neighboring cells. The graph is simple and undirected, and points exactly at the threshold are adjacent. Dividing every projected coordinate by the fixed threshold gives the equivalent unit-distance representation.
 
-## Run DSATUR
+## Run the coloring algorithms
+
+Geometric first-fit processes vertices from left to right. Equal x-coordinates are ordered by y-coordinate and then vertex ID.
 
 ```bash
-./build/dsatur \
+./build/color_graph \
+  --algorithm geometric-first-fit \
   --input graph.edgelist \
-  --output measurement.csv \
-  --colors assignments.csv
+  --points points.csv \
+  --output geometric.csv
 ```
 
-DSATUR selects the uncolored vertex with the highest saturation degree, which is the number of distinct colors used by its colored neighbors. It breaks ties by remaining degree and then vertex ID. The selected vertex gets the smallest available color.
+Smallest-last repeatedly removes a vertex with minimum current degree. It reverses the removal order before applying first-fit.
 
-The implementation uses an indexed max-heap for changing priorities, residual-degree and saturation arrays, a set of observed neighbor colors and timestamp marks for available colors. For `n` vertices and `m` edges, the expected running time is `O((n + m) log n)` and the working space is `O(n + m)` in the worst case. DSATUR returns a valid coloring but does not guarantee the minimum number of colors.
+```bash
+./build/color_graph \
+  --algorithm smallest-last \
+  --input graph.edgelist \
+  --output smallest-last.csv
+```
 
-The measurement CSV contains the graph size, color count, coloring time and validity result. Graph construction and file parsing occur outside the coloring timer.
+Random-order first-fit shuffles the vertices with a recorded seed before coloring them.
+
+```bash
+./build/color_graph \
+  --algorithm random-first-fit \
+  --seed 6405 \
+  --input graph.edgelist \
+  --output random.csv
+```
+
+Each method assigns the smallest color not used by an already colored neighbor. Geometric first-fit takes `O(n log n + m)` time after graph construction. Smallest-last uses degree buckets and takes `O(n + m)` time. Random-order first-fit also takes `O(n + m)` time. All 3 use `O(n + m)` total space with the graph.
+
+The comparison command also supports DSATUR:
+
+```bash
+./build/color_graph \
+  --algorithm dsatur \
+  --input graph.edgelist \
+  --output dsatur.csv
+```
+
+DSATUR selects the uncolored vertex with the highest saturation degree. It breaks ties by remaining degree and then vertex ID. Its expected running time is `O((n + m) log n)` with the indexed max-heap implementation.
+
+Each measurement CSV contains the algorithm, graph size, color count, coloring time, validity result and random seed when used. Graph construction and file parsing occur outside the coloring timer.
 
 The synthetic generator remains available for small reference tests:
 

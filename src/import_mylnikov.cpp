@@ -114,7 +114,7 @@ std::uint64_t edge_count(const udg::Graph &graph) {
   return degree_sum / 2;
 }
 
-} // namespace
+}
 
 int main(int argc, char **argv) {
   try {
