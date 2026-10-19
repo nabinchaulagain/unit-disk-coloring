@@ -307,6 +307,22 @@ void test_edge_list_reader() {
     expect(graph[1].size() == 2, "reader should build both adjacency directions");
 }
 
+void test_sorted_edge_list_reader() {
+    std::istringstream input("4 3\n0 1\n1 2\n2 3\n");
+    const auto graph = udg::read_sorted_edge_list(input);
+    expect(graph.size() == 4, "sorted reader should preserve vertex count");
+    expect(graph[1].size() == 2, "sorted reader should build both adjacency directions");
+
+    std::istringstream unsorted("4 2\n1 2\n0 1\n");
+    bool threw = false;
+    try {
+        static_cast<void>(udg::read_sorted_edge_list(unsorted));
+    } catch (const std::runtime_error&) {
+        threw = true;
+    }
+    expect(threw, "sorted reader should reject an unsorted edge list");
+}
+
 void test_invalid_order() {
     const udg::Graph graph(2);
     bool threw = false;
@@ -335,5 +351,6 @@ int main() {
     test_mylnikov_duplicate_coordinates_remain_distinct();
     test_point_csv_reader();
     test_edge_list_reader();
+    test_sorted_edge_list_reader();
     test_invalid_order();
 }

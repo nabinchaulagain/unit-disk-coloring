@@ -19,6 +19,7 @@ struct Options {
     std::string output_path;
     std::string colors_path;
     std::uint64_t seed = 6405;
+    bool sorted_input = false;
 };
 
 std::uint64_t parse_seed(const std::string& text) {
@@ -53,6 +54,8 @@ Options parse_options(int argc, char** argv) {
             options.colors_path = require_value("--colors");
         } else if (argument == "--seed") {
             options.seed = parse_seed(require_value("--seed"));
+        } else if (argument == "--sorted-input") {
+            options.sorted_input = true;
         } else if (argument == "--help" || argument == "-h") {
             std::cout << "Usage: color_graph --algorithm NAME --input GRAPH [options]\n"
                       << "  --algorithm NAME  geometric-first-fit, smallest-last, "
@@ -60,6 +63,7 @@ Options parse_options(int argc, char** argv) {
                       << "  --points FILE     Coordinate CSV required by "
                          "geometric-first-fit\n"
                       << "  --seed S          Random-first-fit seed (default: 6405)\n"
+                      << "  --sorted-input    Stream a sorted unique edge list directly\n"
                       << "  --output FILE     Write one-row measurement CSV (default: "
                          "stdout)\n"
                       << "  --colors FILE     Write vertex,color assignments\n";
@@ -102,7 +106,8 @@ int main(int argc, char** argv) {
         if (!input) {
             throw std::runtime_error("cannot open input file: " + options.input_path);
         }
-        const udg::Graph graph = udg::read_edge_list(input);
+        const udg::Graph graph =
+            options.sorted_input ? udg::read_sorted_edge_list(input) : udg::read_edge_list(input);
 
         std::vector<udg::Point> points;
         if (options.algorithm == "geometric-first-fit") {

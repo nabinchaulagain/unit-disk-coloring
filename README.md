@@ -45,6 +45,7 @@ Geometric first-fit processes vertices from left to right. For equal x-coordinat
 
 ```bash
 ./build/color_graph \
+  --sorted-input \
   --algorithm geometric-first-fit \
   --input graph.edgelist \
   --points points.csv \
@@ -55,6 +56,7 @@ Smallest-last removes a vertex with minimum current degree until no vertices rem
 
 ```bash
 ./build/color_graph \
+  --sorted-input \
   --algorithm smallest-last \
   --input graph.edgelist \
   --output smallest-last.csv
@@ -64,6 +66,7 @@ Random-order first-fit shuffles the vertices using a recorded seed and then colo
 
 ```bash
 ./build/color_graph \
+  --sorted-input \
   --algorithm random-first-fit \
   --seed 6405 \
   --input graph.edgelist \
@@ -76,6 +79,7 @@ The command also supports DSATUR:
 
 ```bash
 ./build/color_graph \
+  --sorted-input \
   --algorithm dsatur \
   --input graph.edgelist \
   --output dsatur.csv
@@ -84,6 +88,8 @@ The command also supports DSATUR:
 DSATUR selects the uncolored vertex with the highest saturation degree. It breaks ties using the remaining degree and then the vertex ID. The indexed max-heap implementation has an expected running time of `O((n + m) log n)`.
 
 Each measurement CSV contains the algorithm, graph size, color count, coloring time, validity result and random seed when used. The coloring timer excludes graph construction and file parsing.
+
+The importer writes edges in sorted order. The `--sorted-input` option loads these files without keeping a second copy of every edge in memory, which is needed for the full dataset run.
 
 The synthetic generator remains available for small reference tests:
 

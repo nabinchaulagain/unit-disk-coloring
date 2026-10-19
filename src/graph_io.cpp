@@ -85,6 +85,52 @@ Graph read_edge_list(std::istream& input) {
     return graph;
 }
 
+Graph read_sorted_edge_list(std::istream& input) {
+    std::uint64_t n64 = 0;
+    std::uint64_t declared_edges = 0;
+    if (!(input >> n64 >> declared_edges)) {
+        throw std::runtime_error("expected edge-list header: n m");
+    }
+    if (n64 > std::numeric_limits<Vertex>::max()) {
+        throw std::runtime_error("vertex count exceeds the 32-bit vertex-ID limit");
+    }
+
+    Graph graph(static_cast<std::size_t>(n64));
+    Vertex previous_u = 0;
+    Vertex previous_v = 0;
+    bool has_previous = false;
+
+    for (std::uint64_t i = 0; i < declared_edges; ++i) {
+        std::uint64_t u64 = 0;
+        std::uint64_t v64 = 0;
+        if (!(input >> u64 >> v64)) {
+            throw std::runtime_error("edge list ended before the declared edge count");
+        }
+        if (u64 >= n64 || v64 >= n64 || u64 >= v64) {
+            throw std::runtime_error("sorted edge list requires endpoints u < v");
+        }
+
+        const Vertex u = static_cast<Vertex>(u64);
+        const Vertex v = static_cast<Vertex>(v64);
+        if (has_previous && (u < previous_u || (u == previous_u && v <= previous_v))) {
+            throw std::runtime_error(
+                "sorted edge list must contain strictly increasing unique edges");
+        }
+
+        graph[u].push_back(v);
+        graph[v].push_back(u);
+        previous_u = u;
+        previous_v = v;
+        has_previous = true;
+    }
+
+    std::string extra;
+    if (input >> extra) {
+        throw std::runtime_error("edge list has data after the declared edge count");
+    }
+    return graph;
+}
+
 void write_edge_list(const Graph& graph, std::ostream& output) {
     std::uint64_t edges = 0;
     for (std::size_t vertex = 0; vertex < graph.size(); ++vertex) {
