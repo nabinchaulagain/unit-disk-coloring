@@ -2,6 +2,14 @@
 
 A C++ project that builds unit disk graphs from the Mylnikov Wi-Fi location dataset and compares 3 greedy coloring orders.
 
+## Graph model
+
+A vertex represents one Wi-Fi access-point record. One real Wi-Fi network can have multiple access points, so a vertex is closer to a recorded radio or BSSID than a household or business network. We remove BSSIDs from the generated files.
+
+An edge means 2 recorded access points are within the chosen distance threshold. At a 100-meter threshold, we treat access points no more than 100 meters apart as a possible wireless conflict and assign them different colors.
+
+The dataset does not include signal strength, transmit power, walls, channels or traffic. An edge does not prove that the access points communicate, have overlapping coverage or belong to the same network. It represents physical proximity under the unit disk assumption. The output colors are graph-color labels, not observed Wi-Fi channel assignments.
+
 ## Build and test
 
 ```bash
