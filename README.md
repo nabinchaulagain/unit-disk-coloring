@@ -26,13 +26,13 @@ ctest --test-dir build --output-on-failure
 
 ## Build a graph from the dataset
 
-Download the [Mylnikov 2019 Wi-Fi dump](https://www.mylnikov.org/dump2019/wifi.csv) or use the local sample in `datasets/mylnikov/wifi_sample_1MiB.csv`.
+Download the [Mylnikov 2019 Wi-Fi dump](https://www.mylnikov.org/dump2019/wifi.csv). The reported experiment uses the full dump stored as `wifi_full_2019.csv`. The smaller `wifi_sample_1MiB.csv` file is only for quick checks.
 
 The command below selects records from the half-open area `48 <= latitude < 49` and `2 <= longitude < 3`. The importer maps the coordinates to a local plane in meters and connects every pair at most 100 meters apart. We choose the threshold for each experiment.
 
 ```bash
 ./build/import_mylnikov \
-  --input ../../../datasets/mylnikov/wifi_sample_1MiB.csv \
+  --input ../../../datasets/mylnikov/wifi_full_2019.csv \
   --min-lat 48 \
   --max-lat 49 \
   --min-lon 2 \
@@ -60,10 +60,53 @@ The spatial grid reduces the number of distance calculations. It does not change
 
 ## CSV files
 
-- `wifi.csv` is the raw Mylnikov dataset. We read its latitude and longitude values but do not commit this file because it is about 2.1 GiB.
+- `wifi_full_2019.csv` is the full raw Mylnikov dataset used for the reported experiment. We read its latitude and longitude values but do not commit this file because it is about 2.1 GiB.
+- `wifi_sample_1MiB.csv` contains the first 1 MiB of the same dataset and is only used for quick checks. Results from this file are not part of the reported full-dataset experiment.
 - `points.csv` maps each selected vertex ID to its original latitude and longitude and its projected `x` and `y` coordinates. Geometric first-fit uses this file to order the vertices.
 - `generation.csv` contains one row of graph-generation measurements, including the number of input rows, vertices, edges, threshold and generation time.
 - `geometric.csv`, `smallest-last.csv`, `random.csv` and `dsatur.csv` contain the result from each coloring run. These files include the color count, coloring time and validity result.
+
+The rows below use a 2-vertex example to show each format. `AA` and `BB` are shortened BSSID values.
+
+`wifi_full_2019.csv` or `wifi_sample_1MiB.csv`:
+
+```csv
+id,bssid,lat,lon,updated,data
+1,AA,48.500000,2.500000,0,0
+2,BB,48.500000,2.501000,0,0
+```
+
+`points.csv`:
+
+```csv
+vertex,latitude,longitude,x_meters,y_meters
+0,48.5,2.5,0.0,0.0
+1,48.5,2.501,74.0,0.0
+```
+
+The 2 vertices are about 74 meters apart, so a 100-meter threshold creates one edge. The graph edge-list file is not a CSV. Its first row stores the number of vertices and edges, and the remaining rows store the endpoint IDs:
+
+```text
+2 1
+0 1
+```
+
+`generation.csv`:
+
+```csv
+dataset,rows_read,invalid_rows,vertices,edges,threshold_meters,min_latitude,max_latitude,min_longitude,max_longitude,reference_latitude,reference_longitude,generation_ms
+mylnikov_wifi,2,0,2,1,100,48,49,2,3,48.5,2.5,0.150000
+```
+
+A coloring-result CSV:
+
+```csv
+algorithm,vertices,edges,colors,coloring_ms,valid,seed
+geometric-first-fit,2,1,2,0.010000,1,
+random-first-fit,2,1,2,0.009000,1,6405
+```
+
+The generation and coloring times in these sample rows only demonstrate the file format. Each run writes its measured time.
 
 ## Run the coloring algorithms
 
