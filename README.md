@@ -2,6 +2,38 @@
 
 A C++ project that builds unit disk graphs from the Mylnikov Wi-Fi location dataset and compares 3 greedy coloring orders.
 
+## Run on another device
+
+Install Git, CMake 3.16 or newer, a C++17 compiler, Bash and `curl`. The full run needs about 12 GiB of free disk space and 8 GiB of available memory.
+
+```bash
+git clone https://github.com/nabinchaulagain/unit-disk-coloring.git
+```
+
+```bash
+cd unit-disk-coloring
+```
+
+Download the 2.1 GiB dataset and verify its SHA-256 checksum.
+
+```bash
+./scripts/download_dataset.sh
+```
+
+Build the project, run the tests, generate the reported graph and run the 3 required coloring algorithms.
+
+```bash
+./scripts/run_full_region.sh
+```
+
+The script scans the full dataset and builds the graph for `48 <= latitude < 49` and `2 <= longitude < 3` using a 100-meter threshold. It writes generated files to `results/full-region/`.
+
+Claude Code reads `CLAUDE.md`, which imports the project instructions from `AGENTS.md`. Start Claude Code from the repository root and ask it to run the full region experiment.
+
+```bash
+claude
+```
+
 ## Graph model
 
 A vertex represents one Wi-Fi access-point record. One real Wi-Fi network can have multiple access points, so a vertex is closer to a recorded radio or BSSID than a household or business network. We remove BSSIDs from the generated files.
@@ -26,13 +58,13 @@ ctest --test-dir build --output-on-failure
 
 ## Build a graph from the dataset
 
-Download the [Mylnikov 2019 Wi-Fi dump](https://www.mylnikov.org/dump2019/wifi.csv). The reported experiment uses the full dump stored as `wifi_full_2019.csv`. The smaller `wifi_sample_1MiB.csv` file is only for quick checks.
+Download the [Mylnikov 2019 Wi-Fi dump](https://www.mylnikov.org/dump2019/wifi.csv) with `./scripts/download_dataset.sh`. The reported experiment uses the full dump stored as `data/wifi_full_2019.csv`. The smaller `wifi_sample_1MiB.csv` file is only for quick checks.
 
 The command below selects records from the half-open area `48 <= latitude < 49` and `2 <= longitude < 3`. The importer maps the coordinates to a local plane in meters and connects every pair at most 100 meters apart. We choose the threshold for each experiment.
 
 ```bash
 ./build/import_mylnikov \
-  --input ../../../datasets/mylnikov/wifi_full_2019.csv \
+  --input data/wifi_full_2019.csv \
   --min-lat 48 \
   --max-lat 49 \
   --min-lon 2 \
