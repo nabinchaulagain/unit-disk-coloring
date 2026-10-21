@@ -43,9 +43,27 @@ The command below selects records from the half-open area `48 <= latitude < 49` 
   --metrics generation.csv
 ```
 
-The importer creates one vertex for each dataset row and keeps co-located access points separate. The output uses sequential vertex IDs and does not contain BSSIDs.
+## Unit disk graph generation
 
-The importer uses an equirectangular projection centered on the selected area. A spatial grid limits each distance check to the current cell and its 8 neighboring cells. We create a simple undirected graph and connect points whose distance is at most the threshold. Dividing each projected coordinate by the fixed threshold gives the same graph with a unit distance limit.
+1. Read the source CSV and keep records with valid coordinates inside the selected geographic bounds.
+2. Create one vertex for every selected access-point record. Records at the same coordinates remain separate vertices.
+3. Convert latitude and longitude to local `x` and `y` coordinates in meters using an equirectangular projection centered on the selected area.
+4. Divide the area into square grid cells whose side length equals the distance threshold.
+5. For each vertex, check vertices in its cell and the 8 neighboring cells. Add an undirected edge when the exact Euclidean distance is at most the threshold.
+6. Write the graph, projected coordinates and generation measurements to their output files.
+
+We do not remove a vertex because it has no other vertex within the threshold. It remains in the graph as an isolated vertex with degree 0. We only skip invalid records and records outside the selected geographic bounds.
+
+For the current experiment, the distance threshold is 100 meters. If we divide every projected coordinate by 100, the same edge rule becomes a distance of at most 1 unit. The 1 unit is a normalized distance, not 1 meter. Using one fixed threshold for every vertex makes this a unit disk graph.
+
+The spatial grid reduces the number of distance calculations. It does not change the graph because we still apply the exact distance test before adding each edge.
+
+## CSV files
+
+- `wifi.csv` is the raw Mylnikov dataset. We read its latitude and longitude values but do not commit this file because it is about 2.1 GiB.
+- `points.csv` maps each selected vertex ID to its original latitude and longitude and its projected `x` and `y` coordinates. Geometric first-fit uses this file to order the vertices.
+- `generation.csv` contains one row of graph-generation measurements, including the number of input rows, vertices, edges, threshold and generation time.
+- `geometric.csv`, `smallest-last.csv`, `random.csv` and `dsatur.csv` contain the result from each coloring run. These files include the color count, coloring time and validity result.
 
 ## Run the coloring algorithms
 
